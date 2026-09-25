@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prosopis Watch — satellite monitoring &amp; decision support</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme = param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root{color-scheme:light;--cp-bg:#f7f4ef;--cp-bg-elevated:#fcfbf8;--cp-surface:#fff;--cp-surface-soft:#f5f5f5;
+--cp-border:#dedede;--cp-border-strong:#919191;--cp-text:#242424;--cp-text-muted:#5c5c5c;--cp-text-soft:#6f6f6f;
+--cp-accent:#b11f4b;--cp-accent-hover:#9a1a41;--cp-accent-soft:rgba(177,31,75,.08);--cp-accent-fg:#fff;
+--cp-success:#16a34a;--cp-danger:#dc2626;--cp-warning:#f59e0b;--cp-link:#0078d4;
+--cp-shadow:0 18px 48px rgba(0,0,0,.12);--cp-overlay:rgba(255,255,255,.8);--cp-panel:rgba(255,255,255,.86);
+--cp-panel-strong:rgba(255,255,255,.96);--cp-sheen:rgba(255,255,255,.55);--cp-highlight:rgba(177,31,75,.12);}
+html[data-theme="dark"]{color-scheme:dark;--cp-bg:#3d3b3a;--cp-bg-elevated:#343231;--cp-surface:#292929;
+--cp-surface-soft:#2e2e2e;--cp-border:#474747;--cp-border-strong:#5f5f5f;--cp-text:#dedede;--cp-text-muted:#919191;
+--cp-text-soft:#b0b0b0;--cp-accent:#fd8ea1;--cp-accent-hover:#fb7b91;--cp-accent-soft:rgba(253,142,161,.14);
+--cp-accent-fg:#1a1a1a;--cp-success:#4ade80;--cp-danger:#f87171;--cp-warning:#fbbf24;--cp-link:#4da6ff;
+--cp-shadow:0 18px 48px rgba(0,0,0,.32);--cp-overlay:rgba(41,41,41,.88);--cp-panel:rgba(41,41,41,.72);
+--cp-panel-strong:rgba(41,41,41,.96);--cp-sheen:rgba(255,255,255,.04);--cp-highlight:rgba(253,142,161,.12);}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--cp-bg);color:var(--cp-text);font-family:"Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;display:flex;overflow:hidden}
+#sidebar{width:400px;flex:0 0 400px;height:100vh;overflow-y:auto;background:var(--cp-bg-elevated);border-right:1px solid var(--cp-border);padding:16px 16px 40px}
+#mapwrap{flex:1;position:relative;height:100vh;overflow:hidden}
+#mapA,#mapB{position:absolute;inset:0;background:var(--cp-surface-soft)}
+#mapB{z-index:400;clip-path:inset(0 0 0 100%)}
+h1{font-size:17px;margin:0 0 2px}
+.sub{font-size:12px;color:var(--cp-text-muted);margin-bottom:12px;line-height:1.45}
+.tabs{display:flex;gap:3px;margin-bottom:12px;background:var(--cp-surface-soft);padding:3px;border-radius:.625rem;flex-wrap:wrap}
+.tab{flex:1 1 auto;min-width:64px;text-align:center;padding:6px 4px;font-size:11px;font-weight:600;border-radius:.5rem;cursor:pointer;color:var(--cp-text-muted)}
+.tab.on{background:var(--cp-surface);color:var(--cp-accent);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.panel{display:none}.panel.on{display:block}
+.step{border:1px solid var(--cp-border);border-radius:.625rem;background:var(--cp-surface);margin-bottom:9px;overflow:hidden}
+.step.locked{opacity:.45;pointer-events:none}
+.step-hd{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer}
+.step-hd:hover{background:var(--cp-surface-soft)}
+.badge{width:20px;height:20px;flex:0 0 20px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:700;background:var(--cp-surface-soft);color:var(--cp-text-muted);border:1px solid var(--cp-border)}
+.step.active .badge{background:var(--cp-accent);color:var(--cp-accent-fg);border-color:var(--cp-accent)}
+.step.done .badge{background:var(--cp-success);color:#fff;border-color:var(--cp-success)}
+.step-title{font-weight:600;font-size:12.5px;flex:1}
+.step-body{padding:0 12px 12px;display:none}.step.open .step-body{display:block}
+label{display:block;font-size:10.5px;font-weight:600;color:var(--cp-text-muted);text-transform:uppercase;letter-spacing:.04em;margin:9px 0 4px}
+input[type=text],input[type=date],input[type=number],select,textarea{width:100%;padding:7px 9px;border-radius:.625rem;border:1px solid var(--cp-border);background:var(--cp-surface);color:var(--cp-text);font-family:inherit;font-size:12.5px}
+textarea{font-family:Consolas,"Courier New",monospace;font-size:11px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--cp-accent-soft);border-color:var(--cp-accent)}
+.row{display:flex;gap:7px}.row>*{flex:1}
+button{font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:.625rem;border:1px solid var(--cp-border);background:var(--cp-surface);color:var(--cp-text);cursor:pointer}
+button:hover:not(:disabled){background:var(--cp-surface-soft)}
+button.primary{background:var(--cp-accent);color:var(--cp-accent-fg);border-color:var(--cp-accent)}
+button.primary:hover:not(:disabled){background:var(--cp-accent-hover)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.full{width:100%;margin-top:9px}
+.hint{font-size:11px;color:var(--cp-text-soft);line-height:1.5;margin-top:6px}
+.results{max-height:190px;overflow-y:auto;margin-top:8px}
+.sc{padding:7px 9px;border:1px solid var(--cp-border);border-radius:.625rem;margin-bottom:5px;cursor:pointer;background:var(--cp-surface)}
+.sc:hover{border-color:var(--cp-border-strong)}.sc.sel{border-color:var(--cp-accent);background:var(--cp-accent-soft)}
+.sc-top{display:flex;justify-content:space-between;align-items:baseline;gap:7px}
+.sc-date{font-weight:600;font-size:12.5px}
+.sc-cc{font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:20px}
+.cc-good{background:rgba(22,163,74,.14);color:var(--cp-success)}
+.cc-mid{background:rgba(245,158,11,.16);color:var(--cp-warning)}
+.cc-bad{background:rgba(220,38,38,.14);color:var(--cp-danger)}
+.sc-id{font-size:9.5px;color:var(--cp-text-soft);font-family:Consolas,monospace;margin-top:3px;word-break:break-all}
+.note{border-left:3px solid var(--cp-warning);background:var(--cp-surface-soft);padding:8px 10px;border-radius:0 .625rem .625rem 0;font-size:11.5px;line-height:1.5;margin-top:8px;color:var(--cp-text-muted)}
+.note.ok{border-left-color:var(--cp-success)}.note.err{border-left-color:var(--cp-danger)}
+.note.info{border-left-color:var(--cp-link)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:9px}
+.stat{background:var(--cp-surface-soft);border-radius:.625rem;padding:8px 9px}
+.stat-v{font-size:18px;font-weight:700;line-height:1.1}
+.stat-l{font-size:9.5px;color:var(--cp-text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.legend{position:absolute;bottom:14px;left:14px;z-index:900;background:var(--cp-panel-strong);border:1px solid var(--cp-border);border-radius:.625rem;padding:9px 11px;font-size:11px;box-shadow:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14);max-width:230px}
+.lg-row{display:flex;align-items:center;gap:6px;margin:3px 0}
+.dot{width:10px;height:10px;border-radius:50%;border:2px solid #fff;flex:0 0 10px}
+#swipeBar{position:absolute;inset:0;z-index:800;pointer-events:none;display:none}
+#swipeBar.on{display:block}
+#swipeLine{position:absolute;top:0;bottom:0;width:3px;background:var(--cp-accent);transform:translateX(-1.5px);box-shadow:0 0 8px rgba(0,0,0,.4)}
+#swipeHandle{position:absolute;top:50%;width:42px;height:42px;margin-top:-21px;margin-left:-21px;border-radius:50%;background:var(--cp-accent);color:var(--cp-accent-fg);display:grid;place-items:center;cursor:ew-resize;pointer-events:auto;font-size:16px;font-weight:700;box-shadow:0 2px 12px rgba(0,0,0,.35);user-select:none;touch-action:none}
+.swipe-tag{position:absolute;top:14px;background:var(--cp-panel-strong);border:1px solid var(--cp-border);padding:6px 12px;border-radius:20px;font-size:11px;font-weight:600;pointer-events:none}
+#busy{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--cp-panel-strong);border:1px solid var(--cp-border);border-radius:20px;padding:8px 16px;font-size:12px;font-weight:600;display:none;box-shadow:var(--cp-shadow)}
+#busy.on{display:block}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--cp-border);border-top-color:var(--cp-accent);border-radius:50%;animation:sp .7s linear infinite;margin-right:7px;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.geo-item{padding:7px 9px;border-radius:.625rem;cursor:pointer;font-size:12px}
+.geo-item:hover{background:var(--cp-accent-soft)}
+.method{font-size:10.5px;color:var(--cp-text-soft);line-height:1.55;margin-top:10px;padding-top:10px;border-top:1px solid var(--cp-border)}
+.method b{color:var(--cp-text-muted)}
+.leaflet-container{font-family:inherit;background:var(--cp-surface-soft)}
+table.tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+table.tbl th{text-align:left;font-size:9.5px;text-transform:uppercase;color:var(--cp-text-muted);padding:5px 4px;border-bottom:1px solid var(--cp-border)}
+table.tbl td{padding:5px 4px;border-bottom:1px solid var(--cp-border)}
+.pill{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:20px;white-space:nowrap}
+.p-ok{background:rgba(22,163,74,.14);color:var(--cp-success)}
+.p-no{background:rgba(220,38,38,.14);color:var(--cp-danger)}
+.p-mid{background:rgba(245,158,11,.16);color:var(--cp-warning)}
+.bar{height:5px;border-radius:3px;background:var(--cp-surface-soft);overflow:hidden;margin-top:3px}
+.bar>i{display:block;height:100%;background:var(--cp-accent)}
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>Prosopis Watch</h1>
+  <div class="sub">Satellite monitoring, change tracking and decision support for <i>Prosopis juliflora</i> management.</div>
+
+  <div class="tabs">
+    <div class="tab on" data-p="p1">Map &amp; change</div>
+    <div class="tab" data-p="p2">Regrowth</div>
+    <div class="tab" data-p="p3">Risk</div>
+    <div class="tab" data-p="p4">Targeting</div>
+    <div class="tab" data-p="p5">MRV QC</div>
+  </div>
+
+  <!-- ===== PANEL 1 : MAPPING & CHANGE ===== -->
+  <div class="panel on" id="p1">
+    <div class="step active open" id="s1">
+      <div class="step-hd" data-t="s1"><div class="badge">1</div><div class="step-title">Find location</div></div>
+      <div class="step-body">
+        <label>Search place</label>
+        <input type="text" id="q" placeholder="e.g. Afar, Ethiopia or Baringo, Kenya" autocomplete="off">
+        <div id="geoRes" class="results" style="display:none"></div>
+        <div class="hint">Search as you would in a maps app. The visible map extent becomes the analysis area — zoom in for faster, sharper results.</div>
+      </div>
+    </div>
+
+    <div class="step locked" id="s2">
+      <div class="step-hd" data-t="s2"><div class="badge">2</div><div class="step-title">Period A — baseline</div></div>
+      <div class="step-body">
+        <div class="row"><div><label>From</label><input type="date" id="a1" value="2024-08-15"></div>
+        <div><label>To</label><input type="date" id="a2" value="2024-09-30"></div></div>
+        <button class="full" id="findA">Find satellite imagery</button>
+        <div id="noteA"></div><div id="listA" class="results"></div>
+      </div>
+    </div>
+
+    <div class="step locked" id="s3">
+      <div class="step-hd" data-t="s3"><div class="badge">3</div><div class="step-title">Screening A</div></div>
+      <div class="step-body">
+        <div class="row"><div><label>NDVI min</label><input type="number" id="tNdvi" value="0.35" step="0.01"></div>
+        <div><label>NDMI min</label><input type="number" id="tNdmi" value="0.05" step="0.01"></div></div>
+        <button class="full primary" id="runA">Run Prosopis screening</button>
+        <div id="statA"></div>
+      </div>
+    </div>
+
+    <div class="step locked" id="s4">
+      <div class="step-hd" data-t="s4"><div class="badge">4</div><div class="step-title">Period B — comparison</div></div>
+      <div class="step-body">
+        <div class="row"><div><label>From</label><input type="date" id="b1" value="2026-08-15"></div>
+        <div><label>To</label><input type="date" id="b2" value="2026-09-30"></div></div>
+        <button class="full" id="findB">Find satellite imagery</button>
+        <div id="noteB"></div><div id="listB" class="results"></div>
+      </div>
+    </div>
+
+    <div class="step locked" id="s5">
+      <div class="step-hd" data-t="s5"><div class="badge">5</div><div class="step-title">Screening B &amp; change detection</div></div>
+      <div class="step-body">
+        <label>Change threshold (ΔNDVI)</label><input type="number" id="tDelta" value="0.12" step="0.01">
+        <button class="full primary" id="runB">Run screening &amp; change analysis</button>
+        <div id="statB"></div>
+      </div>
+    </div>
+
+    <div class="step locked" id="s6">
+      <div class="step-hd" data-t="s6"><div class="badge">6</div><div class="step-title">Swipe comparison</div></div>
+      <div class="step-body">
+        <button class="full primary" id="swOn">Enable swipe comparison</button>
+        <label style="margin-top:11px">Show pins</label>
+        <select id="pinMode">
+          <option value="both">All findings</option><option value="new">New growth only</option>
+          <option value="stable">Unchanged only</option><option value="loss">Cleared only</option>
+          <option value="none">None</option></select>
+        <label style="margin-top:11px">Map layer</label>
+        <select id="layerMode"><option value="tc">True colour</option><option value="ndvi">NDVI</option></select>
+        <button class="full" id="expFind">Export findings (GeoJSON)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PANEL 2 : REGROWTH vs RECOVERY ===== -->
+  <div class="panel" id="p2">
+    <div class="note info">Distinguishes <b>woody Prosopis regrowth</b> from <b>genuine grassland recovery</b> after clearing, using a 12-month NDVI time series.</div>
+    <label>Time series window (months back)</label>
+    <input type="number" id="tsMonths" value="12" min="6" max="24">
+    <label>Sample points (from change findings)</label>
+    <select id="tsSource">
+      <option value="loss">Cleared sites (recommended)</option>
+      <option value="new">New growth sites</option>
+      <option value="both">All findings</option>
+    </select>
+    <button class="full primary" id="runTS">Run time-series analysis</button>
+    <div id="statTS"></div>
+    <div class="method"><b>How it works.</b> Prosopis is evergreen: it holds a green, moist canopy through the dry season, so its NDVI has a <b>high dry-season floor</b> and <b>low seasonal amplitude</b>. Grassland does the opposite — it greens sharply in the rains and senesces, giving a <b>low floor</b> and <b>high amplitude</b>. Each site is scored on those two numbers.</div>
+  </div>
+
+  <!-- ===== PANEL 3 : RE-INVASION RISK ===== -->
+  <div class="panel" id="p3">
+    <div class="note info">Scores re-invasion risk across the visible area from seed-source pressure, moisture, terrain and fire history.</div>
+    <label>Grid resolution</label>
+    <select id="riskRes"><option value="16">Coarse (fast)</option><option value="24" selected>Medium</option><option value="32">Fine (slow)</option></select>
+    <label>Weights</label>
+    <div class="row">
+      <div><label style="margin:0">Seed source</label><input type="number" id="wSeed" value="40" min="0" max="100"></div>
+      <div><label style="margin:0">Moisture</label><input type="number" id="wMoist" value="30" min="0" max="100"></div>
+    </div>
+    <div class="row">
+      <div><label style="margin:0">Terrain</label><input type="number" id="wTerr" value="20" min="0" max="100"></div>
+      <div><label style="margin:0">Fire</label><input type="number" id="wFire" value="10" min="0" max="100"></div>
+    </div>
+    <button class="full primary" id="runRisk">Run risk forecast</button>
+    <div id="statRisk"></div>
+    <div class="method"><b>Inputs.</b> Seed-source pressure = distance to mapped Prosopis (the strongest documented predictor of spread). Moisture = Sentinel-2 NDMI. Terrain = slope from Copernicus 30&nbsp;m DEM; flat alluvial ground carries higher risk. Fire = MODIS MCD64A1 burned area, which opens ground for colonisation.
+    <br><br><b>Limitation.</b> This is a weighted composite of proxies, not a calibrated probability. Weights are exposed so you can tune them against local knowledge.</div>
+  </div>
+
+  <!-- ===== PANEL 4 : TARGETING ===== -->
+  <div class="panel" id="p4">
+    <div class="note info">Ranks where clearing delivers the greatest return for grazing, water access and erosion control.</div>
+    <label>Priority emphasis</label>
+    <div class="row">
+      <div><label style="margin:0">Grazing</label><input type="number" id="wGraze" value="35" min="0" max="100"></div>
+      <div><label style="margin:0">Water access</label><input type="number" id="wWater" value="35" min="0" max="100"></div>
+    </div>
+    <div class="row">
+      <div><label style="margin:0">Erosion</label><input type="number" id="wEro" value="20" min="0" max="100"></div>
+      <div><label style="margin:0">Density</label><input type="number" id="wDens" value="10" min="0" max="100"></div>
+    </div>
+    <label>Number of priority sites</label>
+    <input type="number" id="topN" value="12" min="3" max="40">
+    <button class="full primary" id="runTarget">Rank priority sites</button>
+    <div id="statTarget"></div>
+    <div class="method"><b>Inputs.</b> Grazing gain = area of low-woody, seasonally green land adjacent to the stand. Water access = proximity to surface water and drainage detected with NDWI. Erosion = slope from the DEM. Density = size of the mapped Prosopis cluster.</div>
+  </div>
+
+  <!-- ===== PANEL 5 : MRV QC ===== -->
+  <div class="panel" id="p5">
+    <div class="note info">Verifies reported field activity against the satellite record — independent quality control for MRV claims.</div>
+    <label>Field records (CSV: lat, lon, date, activity)</label>
+    <textarea id="mrvIn" rows="7" placeholder="11.7820, 40.9610, 2025-03-14, cleared
+11.7905, 40.9702, 2025-06-02, cleared
+11.7751, 40.9555, 2025-09-20, cleared"></textarea>
+    <div class="row" style="margin-top:8px">
+      <div><label style="margin:0">Window (days)</label><input type="number" id="mrvWin" value="60" min="20" max="180"></div>
+      <div><label style="margin:0">Min ΔNDVI</label><input type="number" id="mrvDrop" value="0.10" step="0.01"></div>
+    </div>
+    <button class="full primary" id="runMRV">Verify against satellite</button>
+    <button class="full" id="mrvDemo">Load example from cleared sites</button>
+    <div id="statMRV"></div>
+    <div class="method"><b>How it works.</b> For each record the tool takes the cleanest Sentinel-2 scene before and after the stated date, samples NDVI at the exact coordinate, and checks whether the drop matches the claim. A claim is <b>verified</b> only if the drop exceeds the threshold within the window.
+    <br><br><b>Not verified</b> means the satellite record does not support the claim — it does not by itself prove the work was not done. Cloud, scene gaps and small plot sizes all produce false negatives, so treat it as a screening flag for follow-up.</div>
+  </div>
+
+  <div class="method">
+    <b>Method &amp; caveats.</b> Detection is a <b>spectral indicator</b>, not a trained classifier. It combines NDVI (B08/B04) with NDMI (B08/B11) from Sentinel-2 L2A. Other dense, moist woody species can give the same signal, so findings require field validation.
+    <br><br>Data: Microsoft Planetary Computer — Sentinel-2 L2A, Copernicus DEM GLO-30, MODIS MCD64A1. Place names from OpenStreetMap.
+  </div>
+</div>
+
+<div id="mapwrap">
+  <div id="mapA"></div>
+  <div id="mapB"></div>
+  <div id="busy"><span class="spin"></span><span id="busyTxt">Working…</span></div>
+  <div id="swipeBar">
+    <div id="swipeLine"></div><div id="swipeHandle">⇄</div>
+    <div class="swipe-tag" id="tagA" style="left:62px">Period A</div>
+    <div class="swipe-tag" id="tagB" style="right:14px">Period B</div>
+  </div>
+  <div class="legend" id="legend" style="display:none"><div id="legendBody"></div></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const PC="https://planetarycomputer.microsoft.com/api", COLL="sentinel-2-l2a";
+const TC_F="Gamma%20RGB%203.2%20Saturation%200.8%20Sigmoidal%20RGB%2025%200.35";
+const E_NDVI="(B08-B04)/(B08%2BB04)", E_NDMI="(B08-B11)/(B08%2BB11)", E_NDWI="(B03-B08)/(B03%2BB08)";
+
+const state={sceneA:null,sceneB:null,gridA:null,gridB:null,findingsA:[],findingsB:[],
+             swipe:false,swipeX:.5,risk:[],targets:[],ts:[],mrv:[]};
+
+/* ---- two synchronised maps (Azure Maps swipe pattern) ---- */
+const BASEMAP='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const mapA=L.map('mapA',{center:[11.40,40.20],zoom:12});
+const mapB=L.map('mapB',{center:[11.40,40.20],zoom:12,zoomControl:false,attributionControl:false});
+L.tileLayer(BASEMAP,{attribution:'Imagery: Esri, Maxar, Earthstar Geographics',maxZoom:19}).addTo(mapA);
+L.tileLayer(BASEMAP,{maxZoom:19}).addTo(mapB);
+const map=mapA;
+let syncing=false;
+function link(f,t){f.on('move zoom',()=>{if(syncing)return;syncing=true;t.setView(f.getCenter(),f.getZoom(),{animate:false});syncing=false;applyClip();});}
+link(mapA,mapB);link(mapB,mapA);
+let layerA=null,layerB=null;
+const pinsA=L.layerGroup().addTo(mapA), pinsB=L.layerGroup().addTo(mapB);
+const overlay=L.layerGroup().addTo(mapA);
+
+const $=i=>document.getElementById(i);
+const busy=(on,t)=>{$('busy').classList.toggle('on',on);if(t)$('busyTxt').textContent=t;};
+function unlock(i){$(i).classList.remove('locked')}
+function openStep(i){document.querySelectorAll('.step').forEach(s=>s.classList.remove('open','active'));$(i).classList.add('open','active')}
+function markDone(i){$(i).classList.add('done')}
+document.querySelectorAll('.step-hd').forEach(h=>h.onclick=()=>{const s=$(h.dataset.t);if(s.classList.contains('locked'))return;
+  const w=s.classList.contains('open');document.querySelectorAll('.step').forEach(x=>x.classList.remove('open','active'));if(!w)s.classList.add('open','active');});
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');$(t.dataset.p).classList.add('on');});
+
+const ccClass=c=>c<5?'cc-good':(c<20?'cc-mid':'cc-bad');
+function tileUrl(item,kind){const b=`${PC}/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?collection=${COLL}&item=${item}`;
+  return kind==='ndvi'?b+`&expression=${E_NDVI}&rescale=-1,1&asset_as_band=True&colormap_name=rdylgn`
+    :b+`&assets=B04&assets=B03&assets=B02&color_formula=${TC_F}`;}
+function dTile(item,expr,z,x,y){return `${PC}/data/v1/item/tiles/WebMercatorQuad/${z}/${x}/${y}@1x?collection=${COLL}&item=${item}&expression=${expr}&rescale=-1,1&asset_as_band=True&format=png`;}
+const lon2x=(l,z)=>Math.floor((l+180)/360*(1<<z)), lat2y=(l,z)=>{const r=l*Math.PI/180;return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*(1<<z));};
+const x2lon=(x,z)=>x/(1<<z)*360-180, y2lat=(y,z)=>{const n=Math.PI-2*Math.PI*y/(1<<z);return 180/Math.PI*Math.atan(.5*(Math.exp(n)-Math.exp(-n)));};
+const addDays=(s,n)=>{const d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+const dist=(a,b,c,d)=>{const dy=(a-c)*111,dx=(b-d)*111*Math.cos(a*Math.PI/180);return Math.sqrt(dy*dy+dx*dx);};
+
+/* ---- geocoding (throttled to respect Nominatim's 1 req/sec policy) ---- */
+let gt=null, lastGeo=0, geoBusy=false;
+const geoCache=new Map();
+$('q').addEventListener('input',e=>{clearTimeout(gt);const v=e.target.value.trim();
+  if(v.length<3){$('geoRes').style.display='none';return;}gt=setTimeout(()=>geocode(v),700);});
+async function geocode(q){
+  const box=$('geoRes');
+  if(geoCache.has(q)){renderGeo(geoCache.get(q));return;}
+  if(geoBusy){return;}                      // drop instead of queueing a burst
+  const wait=Math.max(0,1100-(Date.now()-lastGeo));
+  geoBusy=true;
+  box.innerHTML='<div class="hint">Searching…</div>';box.style.display='block';
+  if(wait)await new Promise(r=>setTimeout(r,wait));
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5`);
+    lastGeo=Date.now();
+    if(r.status===429||r.status===403){
+      box.innerHTML='<div class="note err">The OpenStreetMap geocoder is rate-limiting this address. Wait a moment and try again, or pan the map to the area manually.</div>';
+      geoBusy=false;return;}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    geoCache.set(q,j);renderGeo(j);
+  }catch(e){box.innerHTML=`<div class="note err">Search unavailable: ${e.message}. You can still pan and zoom the map manually.</div>`;}
+  geoBusy=false;
+}
+function renderGeo(j){
+  const box=$('geoRes');box.innerHTML='';
+  if(!j.length){box.innerHTML='<div class="hint">No results.</div>';box.style.display='block';return;}
+  j.forEach(p=>{const d=document.createElement('div');d.className='geo-item';d.textContent=p.display_name;
+    d.onclick=()=>{mapA.setView([+p.lat,+p.lon],13);box.style.display='none';$('q').value=p.display_name.split(',')[0];
+      markDone('s1');unlock('s2');openStep('s2');};box.appendChild(d);});
+  box.style.display='block';
+}
+
+/* ---- STAC (GET avoids CORS preflight) ---- */
+async function stacSearch(d1,d2,maxCloud,coll){
+  const b=map.getBounds();
+  const bbox=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].map(v=>v.toFixed(4)).join(',');
+  const dt=`${d1}T00:00:00Z%2F${d2}T23:59:59Z`;
+  const j=await(await fetch(`${PC}/stac/v1/search?collections=${coll||COLL}&bbox=${bbox}&datetime=${dt}&limit=100`)).json();
+  const seen=new Set(),out=[];
+  (j.features||[]).forEach(f=>{const cc=+(f.properties['eo:cloud_cover']||0);
+    if(maxCloud!=null&&cc>=maxCloud)return;const d=f.properties.datetime.slice(0,10);
+    if(seen.has(d))return;seen.add(d);out.push({id:f.id,date:d,cc,bbox:f.bbox});});
+  return out.sort((a,b)=>a.date<b.date?1:-1);
+}
+async function findScenes(w){
+  const d1=$(w==='A'?'a1':'b1').value,d2=$(w==='A'?'a2':'b2').value;
+  const nEl=$(w==='A'?'noteA':'noteB'),lEl=$(w==='A'?'listA':'listB');
+  if(!d1||!d2||d1>d2){nEl.innerHTML='<div class="note err">Choose a valid period.</div>';return;}
+  busy(true,'Searching imagery…');nEl.innerHTML='';lEl.innerHTML='';
+  try{
+    let sc=await stacSearch(d1,d2,null);
+    if(!sc.length){nEl.innerHTML='<div class="note err">No Sentinel-2 imagery for this area and period. Widen the date range.</div>';busy(false);return;}
+    const best=Math.min(...sc.map(s=>s.cc));let note='';
+    if(best>=5){
+      const alt=await stacSearch(addDays(d1,-45),addDays(d2,45),5);
+      if(alt.length){note=`<div class="note">Best scene in your period has <b>${best.toFixed(1)}% cloud</b>. Recommended alternatives under 5% within ±45 days: <b>${alt.slice(0,3).map(s=>s.date+' ('+s.cc.toFixed(1)+'%)').join(', ')}</b>. Added to the bottom of the list.</div>`;
+        alt.forEach(a=>{if(!sc.find(s=>s.date===a.date))sc.push({...a,outside:true});});}
+      else note=`<div class="note">Best scene has <b>${best.toFixed(1)}% cloud</b> and no alternative under 5% within ±45 days. Results may be cloud-affected.</div>`;
+    } else note=`<div class="note ok">Found a scene at <b>${best.toFixed(1)}% cloud</b> — suitable for analysis.</div>`;
+    nEl.innerHTML=note;
+    sc.forEach(s=>{const d=document.createElement('div');d.className='sc';
+      d.innerHTML=`<div class="sc-top"><span class="sc-date">${s.date}${s.outside?' <span style="font-weight:400;color:var(--cp-text-soft)">· outside period</span>':''}</span><span class="sc-cc ${ccClass(s.cc)}">${s.cc.toFixed(1)}% cloud</span></div><div class="sc-id">${s.id}</div>`;
+      d.onclick=()=>selectScene(w,s,d,lEl);lEl.appendChild(d);});
+  }catch(e){nEl.innerHTML=`<div class="note err">Search error: ${e.message}</div>`;}
+  busy(false);
+}
+$('findA').onclick=()=>findScenes('A');$('findB').onclick=()=>findScenes('B');
+function coverageWarn(s){if(!s.bbox)return'';const b=map.getBounds();
+  const ok=s.bbox[0]<=b.getWest()&&s.bbox[1]<=b.getSouth()&&s.bbox[2]>=b.getEast()&&s.bbox[3]>=b.getNorth();
+  return ok?'':`<div class="note">This scene covers only part of the visible extent. Zoom to the area you want to analyse — pixels without data are skipped automatically.</div>`;}
+function selectScene(w,s,el,lEl){
+  lEl.querySelectorAll('.sc').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
+  const k=$('layerMode').value,warn=coverageWarn(s);
+  if(w==='A'){state.sceneA=s;if(layerA)mapA.removeLayer(layerA);
+    layerA=L.tileLayer(tileUrl(s.id,k),{maxZoom:18}).addTo(mapA);
+    if(warn)$('noteA').insertAdjacentHTML('beforeend',warn);markDone('s2');unlock('s3');openStep('s3');}
+  else{state.sceneB=s;if(layerB)mapB.removeLayer(layerB);
+    layerB=L.tileLayer(tileUrl(s.id,k),{maxZoom:18}).addTo(mapB);
+    if(warn)$('noteB').insertAdjacentHTML('beforeend',warn);markDone('s4');unlock('s5');openStep('s5');}
+}
+
+/* ---- pixel sampling ---- */
+const loadImg=u=>new Promise(r=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>r(i);i.onerror=()=>r(null);i.src=u;});
+function tilesForView(z,cap){const b=map.getBounds();
+  const x0=lon2x(b.getWest(),z),x1=lon2x(b.getEast(),z),y0=lat2y(b.getNorth(),z),y1=lat2y(b.getSouth(),z);
+  const t=[];for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)t.push({x,y});
+  if(t.length>cap)t.length=cap;return t;}
+async function sampleGrid(item,label,exprs){
+  const z=Math.max(11,Math.min(13,map.getZoom())),tiles=tilesForView(z,16);
+  const cv=document.createElement('canvas');cv.width=256;cv.height=256;
+  const cx=cv.getContext('2d',{willReadFrequently:true});const pts=[],STEP=8;
+  for(let i=0;i<tiles.length;i++){const t=tiles[i];
+    busy(true,`${label}: reading tile ${i+1} of ${tiles.length}…`);
+    const imgs=await Promise.all(exprs.map(e=>loadImg(dTile(item,e,z,t.x,t.y))));
+    if(imgs.some(x=>!x))continue;
+    const data=imgs.map(im=>{cx.clearRect(0,0,256,256);cx.drawImage(im,0,0);return cx.getImageData(0,0,256,256).data;});
+    for(let py=0;py<256;py+=STEP)for(let px=0;px<256;px+=STEP){
+      const o=(py*256+px)*4;if(data.some(d=>d[o+3]<200))continue;
+      const vals=data.map(d=>(d[o]/255)*2-1);
+      pts.push({lat:y2lat(t.y+py/256,z),lon:x2lon(t.x+px/256,z),v:vals});
+    }}
+  return pts;
+}
+const keyOf=p=>p.lat.toFixed(4)+','+p.lon.toFixed(4);
+function clusterHits(h){const c=.0035,g=new Map();
+  h.forEach(x=>{const k=Math.round(x.lat/c)+'_'+Math.round(x.lon/c);if(!g.has(k))g.set(k,[]);g.get(k).push(x);});
+  const o=[];g.forEach(a=>{const n=a.length;
+    o.push({lat:a.reduce((s,z)=>s+z.lat,0)/n,lon:a.reduce((s,z)=>s+z.lon,0)/n,
+      ndvi:a.reduce((s,z)=>s+z.ndvi,0)/n,ndmi:a.reduce((s,z)=>s+z.ndmi,0)/n,
+      n,kind:a[0].kind,dNdvi:a[0].dNdvi!==undefined?a.reduce((s,z)=>s+(z.dNdvi||0),0)/n:null});});
+  return o.sort((a,b)=>b.n-a.n);}
+const conf=(v,m,tv,tm)=>Math.round((.6*Math.min(1,Math.max(0,(v-tv)/(.85-tv)))+.4*Math.min(1,Math.max(0,(m-tm)/(.55-tm))))*100);
+
+/* ---- screening A ---- */
+$('runA').onclick=async()=>{
+  if(!state.sceneA)return;const tv=+$('tNdvi').value,tm=+$('tNdmi').value;
+  busy(true,'Screening A…');$('statA').innerHTML='';
+  try{
+    const pts=await sampleGrid(state.sceneA.id,'Screening A',[E_NDVI,E_NDMI]);
+    if(!pts.length){$('statA').innerHTML='<div class="note err">No usable pixels. Zoom into the area and retry.</div>';busy(false);return;}
+    state.gridA=new Map(pts.map(p=>[keyOf(p),{ndvi:p.v[0],ndmi:p.v[1]}]));
+    const hits=pts.filter(p=>p.v[0]>=tv&&p.v[1]>=tm).map(p=>({lat:p.lat,lon:p.lon,ndvi:p.v[0],ndmi:p.v[1],kind:'stable'}));
+    state.findingsA=clusterHits(hits);state.findingsB=[];drawPins();setLegend('change');
+    $('statA').innerHTML=`<div class="stats">
+      <div class="stat"><div class="stat-v">${state.findingsA.length}</div><div class="stat-l">locations</div></div>
+      <div class="stat"><div class="stat-v">${(hits.length/pts.length*100).toFixed(1)}%</div><div class="stat-l">of area</div></div>
+      <div class="stat"><div class="stat-v">${hits.length}</div><div class="stat-l">pixels hit</div></div>
+      <div class="stat"><div class="stat-v">${pts.length}</div><div class="stat-l">analysed</div></div></div>
+      <div class="note ok">Screening complete on the <b>${state.sceneA.date}</b> scene (${state.sceneA.cc.toFixed(1)}% cloud).</div>`;
+    markDone('s3');unlock('s4');openStep('s4');
+  }catch(e){$('statA').innerHTML=`<div class="note err">Error: ${e.message}</div>`;}
+  busy(false);};
+
+/* ---- screening B + change ---- */
+$('runB').onclick=async()=>{
+  if(!state.sceneB||!state.gridA)return;
+  const tv=+$('tNdvi').value,tm=+$('tNdmi').value,td=+$('tDelta').value;
+  busy(true,'Screening B…');$('statB').innerHTML='';
+  try{
+    const pts=await sampleGrid(state.sceneB.id,'Screening B',[E_NDVI,E_NDMI]);
+    if(!pts.length){$('statB').innerHTML='<div class="note err">No usable pixels in period B.</div>';busy(false);return;}
+    state.gridB=new Map(pts.map(p=>[keyOf(p),{ndvi:p.v[0],ndmi:p.v[1]}]));
+    const hits=[];
+    pts.forEach(p=>{const a=state.gridA.get(keyOf(p)),ndvi=p.v[0],ndmi=p.v[1],pro=ndvi>=tv&&ndmi>=tm;
+      if(!a){if(pro)hits.push({lat:p.lat,lon:p.lon,ndvi,ndmi,kind:'stable'});return;}
+      const d=ndvi-a.ndvi;
+      if(pro&&d>=td)hits.push({lat:p.lat,lon:p.lon,ndvi,ndmi,kind:'new',dNdvi:d});
+      else if(pro)hits.push({lat:p.lat,lon:p.lon,ndvi,ndmi,kind:'stable',dNdvi:d});
+      else if(a.ndvi>=tv&&a.ndmi>=tm&&-d>=td)hits.push({lat:p.lat,lon:p.lon,ndvi,ndmi,kind:'loss',dNdvi:d});});
+    state.findingsB=clusterHits(hits);drawPins();setLegend('change');
+    const c={new:0,stable:0,loss:0};state.findingsB.forEach(f=>c[f.kind]++);
+    $('statB').innerHTML=`<div class="stats">
+      <div class="stat"><div class="stat-v" style="color:var(--cp-danger)">${c.new}</div><div class="stat-l">new growth</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--cp-warning)">${c.stable}</div><div class="stat-l">unchanged</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--cp-link)">${c.loss}</div><div class="stat-l">cleared</div></div>
+      <div class="stat"><div class="stat-v">${c.new+c.stable+c.loss}</div><div class="stat-l">total sites</div></div></div>
+      <div class="note ${c.new>c.loss?'':'ok'}">Comparing <b>${state.sceneA.date}</b> with <b>${state.sceneB.date}</b>. ${c.new>c.loss?`Net expansion: ${c.new-c.loss} more new-growth than cleared sites.`:`Net reduction: ${c.loss-c.new} more cleared than new-growth sites.`}</div>`;
+    markDone('s5');unlock('s6');openStep('s6');
+  }catch(e){$('statB').innerHTML=`<div class="note err">Error: ${e.message}</div>`;}
+  busy(false);};
+
+/* ---- pins & legend ---- */
+const COLORS={new:'#dc2626',stable:'#f59e0b',loss:'#2563eb'};
+const LABELS={new:'New growth since period A',stable:'Prosopis — unchanged',loss:'Cleared / decline'};
+function renderInto(g,fs){g.clearLayers();const m=$('pinMode').value;if(m==='none')return;
+  const tv=+$('tNdvi').value,tm=+$('tNdmi').value;
+  fs.forEach(f=>{if(m!=='both'&&m!==f.kind)return;const c=conf(f.ndvi,f.ndmi,tv,tm);
+    L.circleMarker([f.lat,f.lon],{radius:Math.min(13,5+Math.sqrt(f.n)*1.4),color:'#fff',weight:2,fillColor:COLORS[f.kind],fillOpacity:.82})
+     .bindPopup(`<b>${LABELS[f.kind]}</b><br>Confidence: <b>${c}%</b><br>NDVI ${f.ndvi.toFixed(2)} · NDMI ${f.ndmi.toFixed(2)}${f.dNdvi!=null?`<br>ΔNDVI ${f.dNdvi>0?'+':''}${f.dNdvi.toFixed(2)}`:''}<br>Cluster pixels: ${f.n}<br><span style="color:#6f6f6f;font-size:11px">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}</span>`).addTo(g);});}
+function drawPins(){renderInto(pinsA,state.findingsA);renderInto(pinsB,state.findingsB.length?state.findingsB:state.findingsA);}
+$('pinMode').onchange=drawPins;
+$('layerMode').onchange=()=>{const k=$('layerMode').value;
+  if(state.sceneA&&layerA)layerA.setUrl(tileUrl(state.sceneA.id,k));
+  if(state.sceneB&&layerB)layerB.setUrl(tileUrl(state.sceneB.id,k));};
+function setLegend(kind){
+  const L1={change:`<div style="font-weight:700;margin-bottom:5px">Findings</div>
+    <div class="lg-row"><span class="dot" style="background:#dc2626"></span> New growth since period A</div>
+    <div class="lg-row"><span class="dot" style="background:#f59e0b"></span> Prosopis, unchanged</div>
+    <div class="lg-row"><span class="dot" style="background:#2563eb"></span> Cleared / decline</div>`,
+   ts:`<div style="font-weight:700;margin-bottom:5px">Regrowth vs recovery</div>
+    <div class="lg-row"><span class="dot" style="background:#b11f4b"></span> Woody regrowth (Prosopis)</div>
+    <div class="lg-row"><span class="dot" style="background:#16a34a"></span> Grassland recovery</div>
+    <div class="lg-row"><span class="dot" style="background:#9AA1AC"></span> Inconclusive</div>`,
+   risk:`<div style="font-weight:700;margin-bottom:5px">Re-invasion risk</div>
+    <div class="lg-row"><span class="dot" style="background:#7f1d1d"></span> Very high</div>
+    <div class="lg-row"><span class="dot" style="background:#dc2626"></span> High</div>
+    <div class="lg-row"><span class="dot" style="background:#f59e0b"></span> Moderate</div>
+    <div class="lg-row"><span class="dot" style="background:#16a34a"></span> Low</div>`,
+   target:`<div style="font-weight:700;margin-bottom:5px">Priority for clearing</div>
+    <div class="lg-row"><span class="dot" style="background:#b11f4b"></span> Rank 1–5</div>
+    <div class="lg-row"><span class="dot" style="background:#f59e0b"></span> Rank 6–12</div>
+    <div class="lg-row"><span class="dot" style="background:#9AA1AC"></span> Lower</div>`,
+   mrv:`<div style="font-weight:700;margin-bottom:5px">MRV verification</div>
+    <div class="lg-row"><span class="dot" style="background:#16a34a"></span> Verified</div>
+    <div class="lg-row"><span class="dot" style="background:#dc2626"></span> Not verified</div>
+    <div class="lg-row"><span class="dot" style="background:#f59e0b"></span> Inconclusive</div>`};
+  $('legendBody').innerHTML=L1[kind]||'';$('legend').style.display='block';}
+
+/* ---- swipe ---- */
+function applyClip(){const el=$('mapB');
+  if(!state.swipe){el.style.clipPath='inset(0 0 0 100%)';return;}
+  const px=Math.round(state.swipeX*$('mapwrap').clientWidth);
+  el.style.clipPath=`inset(0 0 0 ${px}px)`;$('swipeLine').style.left=px+'px';$('swipeHandle').style.left=px+'px';}
+$('swOn').onclick=()=>{if(!state.sceneB)return;state.swipe=!state.swipe;
+  $('swipeBar').classList.toggle('on',state.swipe);
+  $('swOn').textContent=state.swipe?'Disable swipe':'Enable swipe comparison';
+  $('swOn').classList.toggle('primary',!state.swipe);
+  $('tagA').textContent='Period A · '+(state.sceneA?state.sceneA.date:'');
+  $('tagB').textContent='Period B · '+(state.sceneB?state.sceneB.date:'');
+  mapB.invalidateSize();applyClip();};
+let drag=false;const hnd=$('swipeHandle');
+const sd=e=>{drag=true;e.preventDefault();e.stopPropagation();};
+const md=e=>{if(!drag)return;e.preventDefault();const r=$('mapwrap').getBoundingClientRect();
+  state.swipeX=Math.max(.02,Math.min(.98,((e.touches?e.touches[0].clientX:e.clientX)-r.left)/r.width));applyClip();};
+hnd.addEventListener('mousedown',sd);hnd.addEventListener('touchstart',sd,{passive:false});
+window.addEventListener('mousemove',md);window.addEventListener('touchmove',md,{passive:false});
+window.addEventListener('mouseup',()=>drag=false);window.addEventListener('touchend',()=>drag=false);
+window.addEventListener('resize',()=>{mapB.invalidateSize();applyClip();});
+applyClip();
+
+/* ================= 2. REGROWTH vs RECOVERY ================= */
+$('runTS').onclick=async()=>{
+  const src=$('tSSource')||$('tsSource');
+  const pool=state.findingsB.length?state.findingsB:state.findingsA;
+  if(!pool.length){$('statTS').innerHTML='<div class="note err">Run the mapping workflow first — this uses its findings as sample sites.</div>';return;}
+  const want=src.value, sites=pool.filter(f=>want==='both'||f.kind===want).slice(0,14);
+  if(!sites.length){$('statTS').innerHTML=`<div class="note err">No sites of that type. Run the change analysis, or choose "All findings".</div>`;return;}
+  const months=+$('tsMonths').value;
+  busy(true,'Building time series…');$('statTS').innerHTML='';
+  try{
+    // Sample one scene per month so the series actually spans wet and dry seasons.
+    // A single wide STAC query returns only the most recent ~100 items, which would
+    // collapse the window to a few weeks and make seasonal amplitude meaningless.
+    const use=[];
+    const today=new Date();
+    for(let m=months-1;m>=0;m--){
+      const d0=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth()-m,1));
+      const d1=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth()-m+1,0));
+      busy(true,`Finding scene for ${d0.toISOString().slice(0,7)}…`);
+      const s=await stacSearch(d0.toISOString().slice(0,10),d1.toISOString().slice(0,10),40);
+      if(s.length) use.push(s.sort((a,b)=>a.cc-b.cc)[0]);
+    }
+    use.sort((a,b)=>a.date<b.date?-1:1);
+    if(use.length<5){$('statTS').innerHTML=`<div class="note err">Only ${use.length} usable months of imagery in this window. A seasonal signal needs at least 5 — widen the window or pick a less cloudy area.</div>`;busy(false);return;}
+    const z=Math.max(11,Math.min(13,map.getZoom()));
+    const cv=document.createElement('canvas');cv.width=256;cv.height=256;
+    const cx=cv.getContext('2d',{willReadFrequently:true});
+    const series=sites.map(()=>[]);
+    for(let i=0;i<use.length;i++){
+      busy(true,`Time series: scene ${i+1} of ${use.length} (${use[i].date})…`);
+      const need=new Map();
+      sites.forEach((s,si)=>{const x=lon2x(s.lon,z),y=lat2y(s.lat,z),k=x+'_'+y;
+        if(!need.has(k))need.set(k,{x,y,idx:[]});need.get(k).idx.push(si);});
+      for(const t of need.values()){
+        const im=await loadImg(dTile(use[i].id,E_NDVI,z,t.x,t.y));if(!im)continue;
+        cx.clearRect(0,0,256,256);cx.drawImage(im,0,0);const d=cx.getImageData(0,0,256,256).data;
+        t.idx.forEach(si=>{const s=sites[si];
+          const px=Math.floor(((s.lon-x2lon(t.x,z))/(x2lon(t.x+1,z)-x2lon(t.x,z)))*256);
+          const py=Math.floor(((s.lat-y2lat(t.y,z))/(y2lat(t.y+1,z)-y2lat(t.y,z)))*256);
+          if(px<0||px>255||py<0||py>255)return;const o=(py*256+px)*4;
+          if(d[o+3]<200)return;series[si].push({date:use[i].date,ndvi:(d[o]/255)*2-1});});
+      }}
+    overlay.clearLayers();
+    const res=[];
+    series.forEach((s,i)=>{
+      if(s.length<4){res.push({...sites[i],cls:'inconclusive'});return;}
+      const v=s.map(x=>x.ndvi),min=Math.min(...v),max=Math.max(...v),amp=max-min;
+      // evergreen woody: high dry-season floor, low amplitude. grass: low floor, high amplitude.
+      const woody=(min>=0.28&&amp<=0.28), grass=(min<0.22&&amp>0.25);
+      const cls=woody?'regrowth':(grass?'recovery':'inconclusive');
+      res.push({...sites[i],min,max,amp,cls,nObs:s.length});});
+    state.ts=res;
+    const col={regrowth:'#b11f4b',recovery:'#16a34a',inconclusive:'#9AA1AC'};
+    res.forEach(r=>{L.circleMarker([r.lat,r.lon],{radius:9,color:'#fff',weight:2,fillColor:col[r.cls],fillOpacity:.88})
+      .bindPopup(`<b>${r.cls==='regrowth'?'Woody regrowth — likely Prosopis':r.cls==='recovery'?'Grassland recovery':'Inconclusive'}</b>
+        ${r.min!=null?`<br>Dry-season NDVI floor: <b>${r.min.toFixed(2)}</b><br>Seasonal amplitude: <b>${r.amp.toFixed(2)}</b><br>Observations: ${r.nObs}`:'<br>Too few cloud-free observations'}
+        <br><span style="color:#6f6f6f;font-size:11px">${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}</span>`).addTo(overlay);});
+    const c={regrowth:0,recovery:0,inconclusive:0};res.forEach(r=>c[r.cls]++);
+    setLegend('ts');
+    $('statTS').innerHTML=`<div class="stats">
+      <div class="stat"><div class="stat-v" style="color:var(--cp-accent)">${c.regrowth}</div><div class="stat-l">woody regrowth</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--cp-success)">${c.recovery}</div><div class="stat-l">grass recovery</div></div>
+      <div class="stat"><div class="stat-v">${c.inconclusive}</div><div class="stat-l">inconclusive</div></div>
+      <div class="stat"><div class="stat-v">${use.length}</div><div class="stat-l">scenes used</div></div></div>
+      <div class="note ${c.regrowth>c.recovery?'':'ok'}">${c.regrowth>c.recovery?`Regrowth dominates — intervention at these sites is not holding.`:`Recovery dominates — cleared land is returning to seasonal grassland.`} Based on ${use.length} monthly scenes from ${use[0].date} to ${use[use.length-1].date}.</div>`;
+  }catch(e){$('statTS').innerHTML=`<div class="note err">Error: ${e.message}</div>`;}
+  busy(false);};
+
+/* ================= 3. RE-INVASION RISK ================= */
+async function demSample(pts){
+  // Copernicus DEM GLO-30 — elevation used to derive a local slope proxy
+  const b=map.getBounds();
+  const bbox=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].map(v=>v.toFixed(4)).join(',');
+  const j=await(await fetch(`${PC}/stac/v1/search?collections=cop-dem-glo-30&bbox=${bbox}&limit=4`)).json();
+  const items=(j.features||[]).map(f=>({id:f.id,bbox:f.bbox}));
+  if(!items.length)return null;
+  const z=Math.max(11,Math.min(13,map.getZoom()));
+  const cv=document.createElement('canvas');cv.width=256;cv.height=256;
+  const cx=cv.getContext('2d',{willReadFrequently:true});
+  const cache=new Map();
+  for(const p of pts){
+    const it=items.find(i=>p.lon>=i.bbox[0]&&p.lon<=i.bbox[2]&&p.lat>=i.bbox[1]&&p.lat<=i.bbox[3]);
+    if(!it){p.elev=null;continue;}
+    const x=lon2x(p.lon,z),y=lat2y(p.lat,z),k=it.id+'_'+x+'_'+y;
+    if(!cache.has(k)){
+      const im=await loadImg(`${PC}/data/v1/item/tiles/WebMercatorQuad/${z}/${x}/${y}@1x?collection=cop-dem-glo-30&item=${it.id}&assets=data&rescale=0,2500&format=png`);
+      if(!im){cache.set(k,null);}else{cx.clearRect(0,0,256,256);cx.drawImage(im,0,0);cache.set(k,cx.getImageData(0,0,256,256).data);}
+    }
+    const d=cache.get(k);if(!d){p.elev=null;continue;}
+    const px=Math.floor(((p.lon-x2lon(x,z))/(x2lon(x+1,z)-x2lon(x,z)))*256);
+    const py=Math.floor(((p.lat-y2lat(y,z))/(y2lat(y+1,z)-y2lat(y,z)))*256);
+    if(px<1||px>254||py<1||py>254){p.elev=null;continue;}
+    const at=(a,b2)=>d[((b2*256+a)*4)]/255*2500;
+    p.elev=at(px,py);
+    p.slope=(Math.abs(at(px+1,py)-at(px-1,py))+Math.abs(at(px,py+1)-at(px,py-1)))/2;
+  }
+  return true;
+}
+async function fireSample(pts){
+  const end=new Date().toISOString().slice(0,10), start=addDays(end,-730);
+  const b=map.getBounds();
+  const bbox=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].map(v=>v.toFixed(4)).join(',');
+  const dt=`${start}T00:00:00Z%2F${end}T23:59:59Z`;
+  const j=await(await fetch(`${PC}/stac/v1/search?collections=modis-64A1-061&bbox=${bbox}&datetime=${dt}&limit=12`)).json();
+  const items=(j.features||[]).map(f=>f.id);
+  if(!items.length)return false;
+  const z=Math.max(9,Math.min(11,map.getZoom()-2));
+  const cv=document.createElement('canvas');cv.width=256;cv.height=256;
+  const cx=cv.getContext('2d',{willReadFrequently:true});
+  const use=items.slice(0,6), cache=new Map();
+  for(const p of pts)p.fire=0;
+  for(const id of use){
+    for(const p of pts){
+      const x=lon2x(p.lon,z),y=lat2y(p.lat,z),k=id+'_'+x+'_'+y;
+      if(!cache.has(k)){
+        const im=await loadImg(`${PC}/data/v1/item/tiles/WebMercatorQuad/${z}/${x}/${y}@1x?collection=modis-64A1-061&item=${id}&assets=Burn_Date&rescale=0,366&format=png`);
+        if(!im)cache.set(k,null);else{cx.clearRect(0,0,256,256);cx.drawImage(im,0,0);cache.set(k,cx.getImageData(0,0,256,256).data);}
+      }
+      const d=cache.get(k);if(!d)continue;
+      const px=Math.floor(((p.lon-x2lon(x,z))/(x2lon(x+1,z)-x2lon(x,z)))*256);
+      const py=Math.floor(((p.lat-y2lat(y,z))/(y2lat(y+1,z)-y2lat(y,z)))*256);
+      if(px<0||px>255||py<0||py>255)continue;const o=(py*256+px)*4;
+      if(d[o+3]>200&&d[o]>2)p.fire=1;
+    }}
+  return true;
+}
+$('runRisk').onclick=async()=>{
+  if(!state.findingsA.length){$('statRisk').innerHTML='<div class="note err">Run screening A first — seed-source pressure is measured from mapped Prosopis.</div>';return;}
+  busy(true,'Building risk grid…');$('statRisk').innerHTML='';
+  try{
+    const n=+$('riskRes').value,b=map.getBounds();
+    const pts=[];
+    for(let i=0;i<n;i++)for(let j2=0;j2<n;j2++)
+      pts.push({lat:b.getSouth()+(b.getNorth()-b.getSouth())*(i+.5)/n,
+                lon:b.getWest()+(b.getEast()-b.getWest())*(j2+.5)/n});
+    // moisture from period A scene
+    busy(true,'Sampling moisture…');
+    const grid=await sampleGrid(state.sceneA.id,'Risk: moisture',[E_NDMI]);
+    const gmap=new Map(grid.map(p=>[keyOf(p),p.v[0]]));
+    pts.forEach(p=>{let best=null,bd=9e9;
+      for(const g of grid){const d=dist(p.lat,p.lon,g.lat,g.lon);if(d<bd){bd=d;best=g;}}
+      p.ndmi=best?best.v[0]:0;});
+    busy(true,'Sampling terrain…');await demSample(pts);
+    busy(true,'Sampling fire history…');const fireOK=await fireSample(pts);
+    // seed pressure
+    pts.forEach(p=>{let m=9e9;state.findingsA.forEach(f=>{const d=dist(p.lat,p.lon,f.lat,f.lon);if(d<m)m=d;});p.dSeed=m;});
+    const wS=+$('wSeed').value,wM=+$('wMoist').value,wT=+$('wTerr').value,wF=+$('wFire').value;
+    const wTot=wS+wM+wT+wF||1;
+    const maxSlope=Math.max(...pts.map(p=>p.slope||0),1);
+    pts.forEach(p=>{
+      const seed=Math.max(0,1-Math.min(p.dSeed,5)/5);
+      const moist=Math.min(1,Math.max(0,(p.ndmi+0.2)/0.6));
+      const terr=1-Math.min(1,(p.slope||0)/maxSlope);
+      const fire=p.fire?1:0;
+      p.risk=Math.round((seed*wS+moist*wM+terr*wT+fire*wF)/wTot*100);
+      p.parts={seed,moist,terr,fire};});
+    state.risk=pts;
+    overlay.clearLayers();
+    const col=r=>r>=75?'#7f1d1d':r>=55?'#dc2626':r>=35?'#f59e0b':'#16a34a';
+    const cell=Math.min((b.getNorth()-b.getSouth())/n,(b.getEast()-b.getWest())/n);
+    pts.forEach(p=>{L.rectangle([[p.lat-cell/2,p.lon-cell/2],[p.lat+cell/2,p.lon+cell/2]],
+      {stroke:false,fillColor:col(p.risk),fillOpacity:.32+.38*(p.risk/100)})
+      .bindPopup(`<b>Re-invasion risk: ${p.risk}/100</b><br>
+        Seed pressure ${(p.parts.seed*100).toFixed(0)}% (${p.dSeed<5?p.dSeed.toFixed(1)+' km to nearest stand':'>5 km'})<br>
+        Moisture ${(p.parts.moist*100).toFixed(0)}% · Terrain ${(p.parts.terr*100).toFixed(0)}%<br>
+        Fire in last 24 months: ${p.fire?'yes':'no'}${fireOK?'':' (no data)'}
+        <br><span style="color:#6f6f6f;font-size:11px">${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</span>`).addTo(overlay);});
+    setLegend('risk');
+    const hi=pts.filter(p=>p.risk>=55).length, vh=pts.filter(p=>p.risk>=75).length;
+    $('statRisk').innerHTML=`<div class="stats">
+      <div class="stat"><div class="stat-v" style="color:var(--cp-danger)">${vh}</div><div class="stat-l">very high cells</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--cp-warning)">${hi}</div><div class="stat-l">high or above</div></div>
+      <div class="stat"><div class="stat-v">${(hi/pts.length*100).toFixed(0)}%</div><div class="stat-l">of area at risk</div></div>
+      <div class="stat"><div class="stat-v">${pts.length}</div><div class="stat-l">cells scored</div></div></div>
+      ${fireOK?'':'<div class="note">No MODIS burned-area scenes covered this extent, so the fire term scored zero everywhere.</div>'}
+      <div class="note info">Weighted composite of proxies — tune the weights against local knowledge before using operationally.</div>`;
+  }catch(e){$('statRisk').innerHTML=`<div class="note err">Error: ${e.message}</div>`;}
+  busy(false);};
+
+/* ================= 4. TARGETING FOR IMPACT ================= */
+$('runTarget').onclick=async()=>{
+  const pool=state.findingsB.length?state.findingsB.filter(f=>f.kind!=='loss'):state.findingsA;
+  if(!pool.length){$('statTarget').innerHTML='<div class="note err">Run screening first — targeting ranks the mapped stands.</div>';return;}
+  busy(true,'Scoring priority sites…');$('statTarget').innerHTML='';
+  try{
+    const sites=pool.slice(0,60).map(f=>({...f}));
+    busy(true,'Sampling water and vegetation…');
+    const grid=await sampleGrid(state.sceneA.id,'Targeting',[E_NDWI,E_NDVI]);
+    busy(true,'Sampling terrain…');await demSample(sites);
+    const maxSlope=Math.max(...sites.map(s=>s.slope||0),1);
+    const maxN=Math.max(...sites.map(s=>s.n),1);
+    sites.forEach(s=>{
+      let dWater=9e9, grassCount=0, near=0;
+      grid.forEach(g=>{const d=dist(s.lat,s.lon,g.lat,g.lon);
+        if(g.v[0]>0.0&&d<dWater)dWater=d;                    // NDWI>0 = surface water
+        if(d<1.2){near++;if(g.v[1]>0.15&&g.v[1]<0.35)grassCount++;} });
+      s.water=Math.max(0,1-Math.min(dWater,6)/6);
+      s.graze=near?grassCount/near:0;
+      s.ero=Math.min(1,(s.slope||0)/maxSlope);
+      s.dens=s.n/maxN;
+      s.dWater=dWater;});
+    const wG=+$('wGraze').value,wW=+$('wWater').value,wE=+$('wEro').value,wD=+$('wDens').value;
+    const tot=wG+wW+wE+wD||1;
+    sites.forEach(s=>s.score=Math.round((s.graze*wG+s.water*wW+s.ero*wE+s.dens*wD)/tot*100));
+    sites.sort((a,b)=>b.score-a.score);
+    const top=sites.slice(0,+$('topN').value);
+    state.targets=top;
+    overlay.clearLayers();
+    top.forEach((s,i)=>{const c=i<5?'#b11f4b':i<12?'#f59e0b':'#9AA1AC';
+      L.circleMarker([s.lat,s.lon],{radius:11,color:'#fff',weight:2,fillColor:c,fillOpacity:.9})
+       .bindPopup(`<b>Priority #${i+1} — score ${s.score}/100</b><br>
+         Grazing gain ${(s.graze*100).toFixed(0)}% · Water access ${(s.water*100).toFixed(0)}%<br>
+         Erosion ${(s.ero*100).toFixed(0)}% · Stand size ${s.n} px<br>
+         Nearest water: ${s.dWater<6?s.dWater.toFixed(1)+' km':'>6 km'}
+         <br><span style="color:#6f6f6f;font-size:11px">${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}</span>`).addTo(overlay);});
+    setLegend('target');
+    let rows=top.slice(0,8).map((s,i)=>`<tr><td><b>${i+1}</b></td><td>${s.lat.toFixed(3)}, ${s.lon.toFixed(3)}</td>
+      <td><b>${s.score}</b><div class="bar"><i style="width:${s.score}%"></i></div></td></tr>`).join('');
+    $('statTarget').innerHTML=`<table class="tbl"><tr><th>#</th><th>Location</th><th>Score</th></tr>${rows}</table>
+      <button class="full" id="expTarget">Export priority list (CSV)</button>
+      <div class="note info">Scores are relative within this extent, not absolute. Validate the top sites before committing resources.</div>`;
+    $('expTarget').onclick=()=>{
+      const csv='rank,lat,lon,score,grazing,water_access,erosion,stand_px\n'+
+        top.map((s,i)=>[i+1,s.lat.toFixed(5),s.lon.toFixed(5),s.score,(s.graze*100).toFixed(0),(s.water*100).toFixed(0),(s.ero*100).toFixed(0),s.n].join(',')).join('\n');
+      dl(csv,'prosopis-priority-sites.csv','text/csv');};
+  }catch(e){$('statTarget').innerHTML=`<div class="note err">Error: ${e.message}</div>`;}
+  busy(false);};
+
+/* ================= 5. MRV QUALITY CONTROL ================= */
+$('mrvDemo').onclick=()=>{
+  const pool=state.findingsB.filter(f=>f.kind==='loss').slice(0,5);
+  if(!pool.length){$('statMRV').innerHTML='<div class="note err">Run the change analysis first so there are cleared sites to use.</div>';return;}
+  const mid=state.sceneA&&state.sceneB?addDays(state.sceneA.date,Math.round((new Date(state.sceneB.date)-new Date(state.sceneA.date))/86400000/2)):'2025-06-01';
+  $('mrvIn').value=pool.map(f=>`${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}, ${mid}, cleared`).join('\n');
+  $('statMRV').innerHTML='<div class="note ok">Example records loaded from detected cleared sites. The claim date is the midpoint between your two periods.</div>';};
+
+$('runMRV').onclick=async()=>{
+  const raw=$('mrvIn').value.trim();
+  if(!raw){$('statMRV').innerHTML='<div class="note err">Paste field records first, or load the example.</div>';return;}
+  const recs=[];
+  raw.split(/\n+/).forEach((l,i)=>{const p=l.split(',').map(s=>s.trim());
+    if(p.length<3)return;const lat=+p[0],lon=+p[1],date=p[2],act=p[3]||'cleared';
+    if(isNaN(lat)||isNaN(lon)||!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
+    recs.push({line:i+1,lat,lon,date,act});});
+  if(!recs.length){$('statMRV').innerHTML='<div class="note err">No valid rows. Use: lat, lon, YYYY-MM-DD, activity</div>';return;}
+  const win=+$('mrvWin').value, minDrop=+$('mrvDrop').value;
+  busy(true,'Verifying against satellite…');$('statMRV').innerHTML='';
+  try{
+    const z=Math.max(11,Math.min(13,map.getZoom()));
+    const cv=document.createElement('canvas');cv.width=256;cv.height=256;
+    const cx=cv.getContext('2d',{willReadFrequently:true});
+    const sampleAt=async(item,lat,lon)=>{
+      const x=lon2x(lon,z),y=lat2y(lat,z);
+      const im=await loadImg(dTile(item,E_NDVI,z,x,y));if(!im)return null;
+      cx.clearRect(0,0,256,256);cx.drawImage(im,0,0);const d=cx.getImageData(0,0,256,256).data;
+      const px=Math.floor(((lon-x2lon(x,z))/(x2lon(x+1,z)-x2lon(x,z)))*256);
+      const py=Math.floor(((lat-y2lat(y,z))/(y2lat(y+1,z)-y2lat(y,z)))*256);
+      if(px<0||px>255||py<0||py>255)return null;const o=(py*256+px)*4;
+      return d[o+3]<200?null:(d[o]/255)*2-1;};
+    for(let i=0;i<recs.length;i++){
+      const r=recs[i];busy(true,`Verifying record ${i+1} of ${recs.length}…`);
+      const pre=await stacSearch(addDays(r.date,-win),addDays(r.date,-1),20);
+      const post=await stacSearch(addDays(r.date,1),addDays(r.date,win),20);
+      if(!pre.length||!post.length){r.status='inconclusive';r.why='No clear scene before or after the stated date';continue;}
+      const pb=pre.sort((a,b)=>a.cc-b.cc)[0], pa=post.sort((a,b)=>a.cc-b.cc)[0];
+      const v1=await sampleAt(pb.id,r.lat,r.lon), v2=await sampleAt(pa.id,r.lat,r.lon);
+      if(v1==null||v2==null){r.status='inconclusive';r.why='No valid pixel at this coordinate';continue;}
+      r.pre=v1;r.post=v2;r.drop=v1-v2;r.preDate=pb.date;r.postDate=pa.date;
+      if(r.drop>=minDrop){r.status='verified';r.why=`NDVI fell ${r.drop.toFixed(2)} between ${pb.date} and ${pa.date}`;}
+      else{r.status='not-verified';r.why=`NDVI changed only ${r.drop>=0?'−':'+'}${Math.abs(r.drop).toFixed(2)} — below the ${minDrop} threshold`;}
+    }
+    state.mrv=recs;
+    overlay.clearLayers();
+    const col={'verified':'#16a34a','not-verified':'#dc2626','inconclusive':'#f59e0b'};
+    recs.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:10,color:'#fff',weight:2,fillColor:col[r.status],fillOpacity:.9})
+      .bindPopup(`<b>${r.status==='verified'?'Verified':r.status==='not-verified'?'Not verified':'Inconclusive'}</b><br>
+        Claim: ${r.act} on ${r.date}<br>${r.why}
+        ${r.pre!=null?`<br>NDVI ${r.pre.toFixed(2)} → ${r.post.toFixed(2)}`:''}
+        <br><span style="color:#6f6f6f;font-size:11px">${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}</span>`).addTo(overlay));
+    setLegend('mrv');
+    const c={verified:0,'not-verified':0,inconclusive:0};recs.forEach(r=>c[r.status]++);
+    const rows=recs.map(r=>`<tr><td>${r.date}</td><td>${r.lat.toFixed(3)}, ${r.lon.toFixed(3)}</td>
+      <td><span class="pill ${r.status==='verified'?'p-ok':r.status==='not-verified'?'p-no':'p-mid'}">${r.status==='verified'?'OK':r.status==='not-verified'?'FAIL':'N/A'}</span></td>
+      <td>${r.drop!=null?(r.drop>=0?'−':'+')+Math.abs(r.drop).toFixed(2):'—'}</td></tr>`).join('');
+    $('statMRV').innerHTML=`<div class="stats">
+      <div class="stat"><div class="stat-v" style="color:var(--cp-success)">${c.verified}</div><div class="stat-l">verified</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--cp-danger)">${c['not-verified']}</div><div class="stat-l">not verified</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--cp-warning)">${c.inconclusive}</div><div class="stat-l">inconclusive</div></div>
+      <div class="stat"><div class="stat-v">${recs.length}</div><div class="stat-l">records</div></div></div>
+      <table class="tbl"><tr><th>Claim date</th><th>Location</th><th>Result</th><th>ΔNDVI</th></tr>${rows}</table>
+      <button class="full" id="expMRV">Export audit trail (CSV)</button>`;
+    $('expMRV').onclick=()=>{
+      const csv='lat,lon,claim_date,activity,status,pre_date,pre_ndvi,post_date,post_ndvi,delta_ndvi,note\n'+
+        recs.map(r=>[r.lat,r.lon,r.date,r.act,r.status,r.preDate||'',r.pre!=null?r.pre.toFixed(3):'',r.postDate||'',r.post!=null?r.post.toFixed(3):'',r.drop!=null?r.drop.toFixed(3):'',`"${r.why}"`].join(',')).join('\n');
+      dl(csv,'prosopis-mrv-audit.csv','text/csv');};
+  }catch(e){$('statMRV').innerHTML=`<div class="note err">Error: ${e.message}</div>`;}
+  busy(false);};
+
+/* ---- export ---- */
+function dl(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);
+  const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);}
+$('expFind').onclick=()=>{
+  const fs=state.findingsB.length?state.findingsB:state.findingsA;
+  if(!fs.length){alert('No findings to export yet.');return;}
+  const gj={type:'FeatureCollection',features:fs.map(f=>({type:'Feature',
+    geometry:{type:'Point',coordinates:[+f.lon.toFixed(6),+f.lat.toFixed(6)]},
+    properties:{class:f.kind,ndvi:+f.ndvi.toFixed(3),ndmi:+f.ndmi.toFixed(3),
+      delta_ndvi:f.dNdvi!=null?+f.dNdvi.toFixed(3):null,cluster_px:f.n,
+      scene_a:state.sceneA?state.sceneA.date:null,scene_b:state.sceneB?state.sceneB.date:null}}))};
+  dl(JSON.stringify(gj,null,1),'prosopis-findings.geojson','application/geo+json');};
+</script>
+</body>
+</html>
