@@ -4,7 +4,7 @@ Satellite monitoring, change tracking and decision support for **_Prosopis julif
 
 Runs entirely in the browser. No backend, no build step, no API keys, no installation.
 
-**▶ [Open the live app](https://YOUR-USERNAME.github.io/prosopis-watch/)**
+**▶ [Open the live app](https://lun-maxpower.github.io/prosopis-watch/)**
 
 ---
 
@@ -12,6 +12,7 @@ Runs entirely in the browser. No backend, no build step, no API keys, no install
 
 | Capability | What it computes |
 |---|---|
+| **CARE Ground Truth & `v20b` RF Model** | Displays all 426 CARE / SoilWatch ground-truth records (`n=94` field plots + `24` Marsabit points + `230` online Prosopis + `78` online Acacia/Balanites), all 57 walked ODK field polygons (`4,789` vertices, `109.95 ha`), and 466 `v20b` 100-tree Random Forest detected Prosopis stands (`13,003.4 ha`, `OA = 92.9%`, `κ = 0.858`), plus a live in-browser `v20b` RF viewport classifier |
 | **Map & change** | Maps Prosopis stands from Sentinel-2, then compares two time periods to show where it has been cleared and where it is returning |
 | **Regrowth vs recovery** | Uses a 12-month NDVI time series to separate harmful woody regrowth from genuine grassland recovery after clearing |
 | **Re-invasion risk** | Scores spread risk across a grid from seed-source pressure, soil moisture, terrain and fire history |
